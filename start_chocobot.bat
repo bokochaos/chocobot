@@ -1,0 +1,2 @@
+nodemon chocobot.js
+PAUSE
