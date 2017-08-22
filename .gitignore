@@ -44,6 +44,7 @@ Temporary Items
 
 # (Personal) data files
 chocobot extras
+constants/token.js
 
 #Excessive Node.JS files that should be installed via README
 node_modules

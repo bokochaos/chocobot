@@ -1,16 +1,21 @@
 /*
  * Created:				26 June 2017
- * Last updated:		27 July 2017
+ * Last updated:		22 Aug 2017
  * Developer(s):		CodedLotus
  * Description:			Core details and functions of Chocobot
- * Version #:			0.0.5
+ * Version #:			1.0.2
  * Version Details:
 		0.0.0: Core code came from Nazuna Bot
-		0.0.1: variable changed to constant
-		0.0.2: constant changed to object, and then exportable with function getToken() to return token string.
+		0.0.1: variable string storing bot token changed to constant
+		0.0.2: constant string storing bot token changed to object, and then exportable with function getToken() to return token string.
 		0.0.3: Able to pull JSON data and use data to put out information as messages.
 		0.0.4: Changed String-based command resolution from if-else to Switch statement-based
 		0.0.5: Created commandJSO function to manage command decomposition easier
+		0.0.8: Role functionality ~90% done. Bot token turned to external exported string.
+		0.0.9: Early Wikia search in development.
+		0.1.0: Full-Schedule Metal Zone look-ahead functionality added to the bot.
+		1.0.0: Multi-functional bot "fork" (Hisobot) released for Discord use via GCE (21 Aug 2017)
+		1.0.2: Partial-Schedule Metal Zone look-ahead functionality extended Full-Schedule look-ahead; Chocobot updated with Hisobot functionality
  * fork sourcecode:		https://github.com/danielmilian90/Nazuna
  */
 
@@ -21,7 +26,16 @@ const token = require('./constants/token').token;
 //const token = require('./constants/token').token;
 const customErrors = require('./constants/errors');
 
-//console.log(botCodes.getToken());
+//TB data imports
+const SKILLS = require('./constants/skills_data').Skills;
+
+//r/TB Discord role names anmd alterations
+var roleNames = require('./constants/role_maps').roleNames;
+//TODO: make this into a DB system that allows for better name association management
+
+/* Metal Zone Tracker */
+var MZTable = require("./constants/MZTable");
+var MZSchedule = new MZTable();
 
 
 const Discord = require('discord.js');
@@ -36,6 +50,22 @@ const client = new Discord.Client();
 var request = require("request");
 
 
+
+/*
+ * Helper Functions that I will use frequently
+ *
+ */
+
+//Check if string has substring
+function hasSubstr(str, searchStr){
+	return str.search(searchStr) > 0;
+}
+
+//Check what role the user has that elevates their permissions
+function checkHoistRole(cmd){
+	return cmd.message.member.hoistRole;
+	
+}
 
 /*bot.registry.registerGroup('random','Random');
 bot.registry.registerDefaults(); //registers bot defaults for the bot
@@ -136,6 +166,8 @@ function onShutDown(message){
 		console.log("user: " + author.username + " id: " + author.id);
 		console.log("server: " + server.name + " id: " + server.id);
 		
+		delete author, server;
+		
 		//Discord Client Logout
 		client.destroy();
 		//Node.js process exit
@@ -157,8 +189,9 @@ function manageFeeding(details) {
 	return response;
 }
 
+//Add server roles to user based on command details
 function manageRoles(cmd){
-	if (cmd.message.member === null) { return {response: "failure"}; }
+	if (typeof cmd.message.channel === 'DMChannel') { return {response: "failure"}; }
 	var roles = cmd.details.split(",");
 	var guildMember = cmd.message.member;
 	const guildRoles = cmd.message.guild.roles;
@@ -171,25 +204,67 @@ function manageRoles(cmd){
 	//Append response of what was done
 	roles.forEach(function(entry){
 		entry = entry.trim();
-		if ( entry.trim().toLowerCase().search("com") == -1 &&
-			entry.trim().toLowerCase().search("mod") == -1 &&
-			entry.trim().toLowerCase().search("adm") == -1 &&
-			entry.trim().toLowerCase().search("ryd") == -1 &&
-			entry.trim().toLowerCase().search("bot") == -1 &&
-			entry.trim().toLowerCase().search("dyno") == -1 ){
-			var role = guildRoles.find("name", entry.trim());
-			if(role == null){ feedback.response = feedback.response.concat("Kweh kweh (role " + entry.trim() + " does not exist)\n"); }
+		lowCaseEntry = entry.toLowerCase();
+		
+		//Ignore any attempts to try to get a moderator, admin, companion, bot, or Rydia role.
+		if (!hasSubstr(lowCaseEntry, "com") &&
+			!hasSubstr(lowCaseEntry, "mod") &&
+			!hasSubstr(lowCaseEntry, "adm") &&
+			!hasSubstr(lowCaseEntry, "ryd") &&
+			!hasSubstr(lowCaseEntry, "bot") &&
+			!hasSubstr(lowCaseEntry, "dyno") ){
+			
+			//run requested role name through the roleName DB
+			var roleCheck = roleNames.get(lowCaseEntry); //TODO: Make a DB that allows for server-specific role name checks
+			var role;
+			
+			try{ var role = guildRoles.find("name", roleCheck); }
+			catch (err) { 
+				//Role didn't exist
+				console.log(err.message);
+			}
+			
+			if( typeof role === 'undefined' || role == null ){ feedback.response = feedback.response.concat("Kweh kweh (role '" + entry + "' does not exist)\n"); }
 			else if( guildMember.roles.has(role.id) ) {
 				guildMember.removeRole(role);
-				feedback.response = feedback. response.concat("Kweh kweh (role removed: " + entry.trim() + ")\n"); }
+				feedback.response = feedback. response.concat("Kweh kweh (role removed: " + role.name + ")\n"); }
 			else {
 				guildMember.addRole(role);
-				feedback.response = feedback.response.concat("Kweh kweh (role assigned: " + entry.trim() + ")\n"); }
-		} else { feedback.response = feedback.response.concat("Kweh kweh (I cannot assign " + entry.trim() + " roles)"); }
-		guildMember = cmd.message.member;
+				feedback.response = feedback.response.concat("Kweh kweh (role assigned: " + role.name + ")\n"); }
+		} else { feedback.response = feedback.response.concat("Kweh kweh (I cannot assign '" + entry + "' roles)"); }
+		//guildMember = cmd.message.member;
 	});
 	//return feedback responses
 	return feedback;
+}
+
+
+
+function hasLambda(str){
+	return str.search("lambda") || str.search("^") || str.search("Λ") ;
+}
+
+function wikiSearch(cmd){
+	var bForCharacter = hasSubstr(cmd.details, "character");
+	var bForLambda = hasLambda(cmd.details);
+	
+	var x = "";
+	request("http://terrabattle.wikia.com/wiki/Special:Search?search=Nazuna&fulltext=Search&format=json", function(error, response, body) {
+		//console.log(body);
+		message.channel.send("Kweh (Lemme check)");
+		x = JSON.parse(body); //x becomes an array of JSOs
+		var count = 0, response = "";
+		do{
+			var link_x = x[count];
+			response = response.concat("\t" + link_x.title + ": " + link_x.url + "\n");
+			++count;
+		} while (count < 1);
+		//console.log(x[0]); // print out the 0th JSO
+		message.channel.send(response);
+		
+		//message.channel.send(body); //Voids 2k character limit of Discord messsages
+		//x = body;
+	});
 }
 
 function wikitest(message){
@@ -203,13 +278,42 @@ function wikitest(message){
 			var link_x = x[count];
 			response = response.concat("\t" + link_x.title + ": " + link_x.url + "\n");
 			++count;
-		} while (count < 5);
+			delete link_x;
+		} while (count < 1);
 		//console.log(x[0]); // print out the 0th JSO
 		message.channel.send(response);
 		
 		//message.channel.send(body); //Voids 2k character limit of Discord messages
 		//x = body;
 	});
+}
+
+function metalZone(cmd){
+	if (cmd.details == "" || cmd.details == "all") {
+		var futureMZSchedule = MZSchedule.getNextZoneSchedule();
+		var schedule = "Time remaining until: (D:HH:MM)\n";
+		for (var zone = 0; zone < MZSchedule._MAX_ZONE; ++zone){
+			schedule += "MZ" + (zone+1) + ": " + futureMZSchedule.openZoneSchedule[zone];
+			schedule += "  AHTK" + ": " + futureMZSchedule.openAHTKSchedule[zone] + "\n";
+		}
+		cmd.message.channel.send(schedule);
+	}
+	else{
+		var futureMZSchedule = "";
+		switch (cmd.details){
+			case 1: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(1); break;
+			case 2: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(2); break;
+			case 3: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(3); break;
+			case 4: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(4); break;
+			case 5: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(5); break;
+			case 6: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(6); break;
+			case 7: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(7); break;
+			default: cmd.message.channel.send( "I don't know that zone. You doing okay?" );
+		}
+		var schedule = "Time remaining until: (D:HH:MM)\n";
+		schedule += "MZ" + cmd.details + ": " + futureMZSchedule.openZoneSchedule;
+		schedule += "  AHTK" + ": " + futureMZSchedule.openAHTKSchedule + "\n";
+	}
 }
 
 
@@ -240,6 +344,7 @@ client.on('message', message => {
 			onShutDown(message);
 			
 			//20 July 2017: Not sure if this message is reached.
+			//01 Aug 2017: Message is reached if the user does not have authorization. Thanks @Paddington for being the first person to test that.
 			console.log("Shutdown test message");
 			
 			//20 July 2017: Is break ever reached if the process kills itself?
@@ -269,7 +374,8 @@ client.on('message', message => {
 		case "commands":
 		case "help":
 		case "-h":
-			message.channel.send("Kweh! ( goo.gl/TeBpEb )");
+		case "h":
+			message.channel.send("Kweh! (I hide the manual here <goo.gl/TeBpEb>)");
 			break;
 			
 		case "wiki":
@@ -279,7 +385,12 @@ client.on('message', message => {
 		
 		case "mz":
 		case "metal":
-			message.channel.send("Kweh! (Coming soon!)");
+			metalZone(command);
+			//message.channel.send("Kweh! (Coming soon!)");
+			break;
+		
+		case "name":
+			message.channel.send("Kweh (I'm chocobot.)");
 			break;
 		
 		case "annoyed":

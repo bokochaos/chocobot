@@ -1,6 +1,6 @@
 {
   "name": "chocobot",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Bot designed for partial use with /r/TerraBattle's Discord",
   "main": "chocobot.js",
   "scripts": {
