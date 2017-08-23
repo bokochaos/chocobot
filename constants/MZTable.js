@@ -1,14 +1,15 @@
 /**
  * Created:				11 Aug 2017
- * Last updated:		16 Aug 2017
+ * Last updated:		22 Aug 2017
  * Developer(s):		CodedLotus
  * Description:			Returns details of the TB1 Metal Zone. Initial Function code came from crape.org/tools/terra-battle/mz.html
- * Version #:			1.1.0
+ * Version #:			1.2.0
  * Version Details:
 		0.0.0: File created from cloning token.js file
 		1.0.0: Basic on-the-hour MZ schedule available
 		1.1.0: Full Schedule search available from class
 		1.1.1: Added auto-correcting DateString function to make the array material more readable and usable
+		1.2.0: Added single-zone schedule access function for data retrieval
  * Functional sourcecode:	https://crape.org/tools/terra-battle/mz.html
  */
 
@@ -217,7 +218,7 @@ class MZTable {
 		movingDate.setMinutes(0); movingDate.setSeconds(0); movingDate.setMilliseconds(0);
 		
 		//Initialize new arrays that will hold the new DateTimes for the upcoming MZ instances
-		var openZone = undefined, openAHTK = undefined;
+		var openZone = undefined, openAHTK = undefined, openZoneCounter = 1, openAHTKCounter = 1;
 		//Counters are to help calculate remaining slots to fill.
 		
 		/**
@@ -233,18 +234,22 @@ class MZTable {
 			//Skip case where openNow == 2 to ignore "current" MZ1 running
 			if( openNow == this._STAT_OPEN1 ){ continue; }
 			//Case for AHTK, but skip if the counter is 0 or current zone has its time filled
-			else if( typeof openAHTK === 'undefined' 
+			else if( openAHTKCounter > 0 
+				&& typeof openAHTK === 'undefined' 
 				&& openNow == this._STAT_KING ){
 					openAHTK = this._datestringMaker(movingDate, true);
+					--openAHTKCounter;
 			}
 			//Case for normal MZs, but skip if the counter is 0 or current zone has its time filled
-			else if ( typeof openZone === 'undefined' 
+			else if ( openZoneCounter > 0 
+				&& typeof openZone === 'undefined' 
 				&& openNow == this._STAT_OPEN ){
 					openZone = this._datestringMaker(movingDate);
+					--openZoneCounter;
 			}
 			//Increment the hour for MZ analysis
 			movingDate.setHours( movingDate.getHours() + 1 );
-		} while (typeof openZone === 'undefined' || typeof openAHTK === 'undefined'); //Make sure both counters == 0 before I end the loop.
+		} while (openZoneCounter > 0 || openAHTKCounter > 0); //Make sure both counters == 0 before I end the loop.
 		
 		return {openZoneSchedule : openZone, openAHTKSchedule : openAHTK };
 	}

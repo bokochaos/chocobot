@@ -289,6 +289,7 @@ function wikitest(message){
 }
 
 function metalZone(cmd){
+	
 	if (cmd.details == "" || cmd.details == "all") {
 		var futureMZSchedule = MZSchedule.getNextZoneSchedule();
 		var schedule = "Time remaining until: (D:HH:MM)\n";
@@ -301,18 +302,20 @@ function metalZone(cmd){
 	else{
 		var futureMZSchedule = "";
 		switch (cmd.details){
-			case 1: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(1); break;
-			case 2: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(2); break;
-			case 3: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(3); break;
-			case 4: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(4); break;
-			case 5: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(5); break;
-			case 6: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(6); break;
-			case 7: futureMZSchedule = MZSchedule.getSpecificZoneSchedule(7); break;
-			default: cmd.message.channel.send( "I don't know that zone. You doing okay?" );
+			case '1': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(1); break;
+			case '2': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(2); break;
+			case '3': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(3); break;
+			case '4': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(4); break;
+			case '5': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(5); break;
+			case '6':  futureMZSchedule = MZSchedule.getSpecificZoneSchedule(6); break;
+			case '7': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(7); break;
+			default:
+				cmd.message.channel.send( "Kweh kweh? (I don't know that zone. You doing okay?)" );
 		}
 		var schedule = "Time remaining until: (D:HH:MM)\n";
 		schedule += "MZ" + cmd.details + ": " + futureMZSchedule.openZoneSchedule;
 		schedule += "  AHTK" + ": " + futureMZSchedule.openAHTKSchedule + "\n";
+		cmd.message.channel.send(schedule);
 	}
 }
 
