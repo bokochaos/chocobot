@@ -1,15 +1,19 @@
 /**
- * Created:				11 Aug 2017
- * Last updated:		22 Aug 2017
+ * Created:				  11 Aug 2017
+ * Last updated:		14 Sept 2017
  * Developer(s):		CodedLotus
  * Description:			Returns details of the TB1 Metal Zone. Initial Function code came from crape.org/tools/terra-battle/mz.html
- * Version #:			1.2.0
+ * Version #:			  1.3.1
  * Version Details:
 		0.0.0: File created from cloning token.js file
 		1.0.0: Basic on-the-hour MZ schedule available
 		1.1.0: Full Schedule search available from class
 		1.1.1: Added auto-correcting DateString function to make the array material more readable and usable
 		1.2.0: Added single-zone schedule access function for data retrieval
+		1.2.1: Corrected semi-scheduled infinite loop.
+    1.3.0: Added flags for zone schedule getters to return Date arrays instead of String arrays
+    1.3.1: Created separate time-remaining function to allow easier calculations of "Time Remaining"
+    1.3.2: Replaced some manual time calculations with class constants.
  * Functional sourcecode:	https://crape.org/tools/terra-battle/mz.html
  */
 
@@ -30,6 +34,17 @@ class MZTable {
 		this._STAT_KING  = 3;
 		this._MAX_ZONE = 7;
 		
+    /**
+		 * Class constants pertaining to time calculations.
+		 */
+    this._60 = 60;
+    this._24 = 24;
+    this._1000 = 1000;
+    this._SEC_IN_MS  = this._1000;
+    this._MIN_IN_MS  = this._1000 * this._60;
+    this._HOUR_IN_MS = this._1000 * this._60 * this._60;
+    this._DAY_IN_MS  = this._1000 * this._60 * this._60 * this._24;
+    
 		/**
 		 * Class constant that signifies the starting time for calculations.
 		 */
@@ -71,11 +86,11 @@ class MZTable {
 	/**
 	 * Initializing function that creates the 2-D array with timings for the class.
 	 */
-	 _createTimetable() {
+	_createTimetable() {
 	  // 通常OPEN
 	  for (var i = 0; i < 10; ++i) {
 		var ary = [];
-		for (var j = 0; j < 24; ++j) {
+		for (var j = 0; j < this._24; ++j) {
 		  var remainder = (j - (i % 5)) % 6;
 		  var state = this._STAT_CLOSE;
 		  if (remainder == 0) { state = this._STAT_OPEN; }
@@ -104,10 +119,10 @@ class MZTable {
 	 */
 	_getTimetableState(date, zone) {
 	  var deltaD = Math.floor(
-		(date.getTime() - this._BASE_TIME) / (1000*60*60*24)
+		(date.getTime() - this._BASE_TIME) / (this._DAY_IN_MS)
 	  );
 	  var deltaH = Math.floor(
-		(date.getTime() - this._BASE_TIME - deltaD * 1000*60*60*24) / (1000*60*60)
+		(date.getTime() - this._BASE_TIME - deltaD * this._DAY_IN_MS) / (this._HOUR_IN_MS)
 	  );
 
 	  var idxD = (deltaD + zone - 1) % 10;
@@ -120,23 +135,40 @@ class MZTable {
 	/**
 	 * Function that converts DateString data into a readable string for (D:)(H)H:MM formatting for Discord messaging purposes
 	 */
-	_datestringMaker(date, isAHTK = false) {
+	datestringMaker(date, isAHTK = false) {
 		var dateNow = new Date();
 		var baseDeltaD = Math.floor(
-			(date - dateNow) / (1000*60*60*24)
+			(date - dateNow) / (this._DAY_IN_MS)
 		);
 		var baseDeltaH = Math.floor(
-			(date - dateNow - baseDeltaD * 1000*60*60*24) / (1000*60*60)
+			(date - dateNow - baseDeltaD * this._DAY_IN_MS) / (this._HOUR_IN_MS)
 		);
 		var baseDeltaM = Math.floor(
-			(date - dateNow - baseDeltaD * 1000*60*60*24 - baseDeltaH * 1000*60*60) / (1000*60)
+			(date - dateNow - baseDeltaD * this._DAY_IN_MS - baseDeltaH * this._HOUR_IN_MS) / (this._MIN_IN_MS)
 		);
-		return ( !isAHTK
+    return ( !isAHTK
 			?  baseDeltaH + ":" + (baseDeltaM < 10 ? "0" : "" ) + baseDeltaM 
 			:  (baseDeltaD > 0 ? baseDeltaD + ":" : "") + (baseDeltaH < 10 ? "0" : "" ) + baseDeltaH + ":" + (baseDeltaM < 10 ? "0" : "" ) + baseDeltaM );
 	}
-
-	/**
+  
+  /**
+	 * Function that converts Date data into a usable JSO for Discord alert purposes
+	 */
+	timeRemaining(MZdate, dateNow = new Date()) {
+		//var dateNow = new Date();
+		var baseDeltaD = Math.floor(
+			(MZdate - dateNow) / (this._DAY_IN_MS)
+		);
+		var baseDeltaH = Math.floor(
+			(MZdate - dateNow - baseDeltaD * this._DAY_IN_MS) / (this._HOUR_IN_MS)
+		);
+		var baseDeltaM = Math.floor(
+			(MZdate - dateNow - baseDeltaD * this._DAY_IN_MS - baseDeltaH * this._HOUR_IN_MS) / (this._MIN_IN_MS)
+		);
+    return { days: baseDeltaD, hours: baseDeltaH, minutes: baseDeltaM };
+	}
+  
+  /**
 	 * Function that gets all of the Metal Zones available at this moment (including MZ AHTK)
 	 */
 	getOpenZones(date){
@@ -158,10 +190,10 @@ class MZTable {
 	
 	/**
 	 * Function that looks ahead for the next openings of the Metal Zones and their AHTKs.
-	 * Returns: JSON with 2 attributes (openZoneSchedule, openAHTKSchedule) that are arrays populated with Strings
+	 * Returns: JSON with 2 attributes (openZoneSchedule, openAHTKSchedule) that are arrays populated with Strings (or Dates if format = false)
 	 * 		NOTE: Strings made in this function use internal datestringMaker to manage readability moving up
 	 */
-	getNextZoneSchedule(){
+	getNextZoneSchedule(format = true){
 		//Initialize new DateTime object set to start at the next hour
 		var movingDate = new Date();
 		movingDate.setHours( movingDate.getHours() + 1 );
@@ -188,14 +220,16 @@ class MZTable {
 				else if( openAHTKCounter > 0 
 					&& typeof openAHTK[zone] === 'undefined' 
 					&& openNow[zone] == this._STAT_KING ){
-						openAHTK[zone] = this._datestringMaker(movingDate, true);
+						openAHTK[zone] = (format ? this.datestringMaker(movingDate, true) : new Date(movingDate));
+						//openAHTK[zone] = this._datestringMaker(movingDate, true);
 						--openAHTKCounter;
 				}
 				//Case for normal MZs, but skip if the counter is 0 or current zone has its time filled
 				else if ( openZoneCounter > 0 
 					&& typeof openZones[zone] === 'undefined' 
 					&& openNow[zone] == this._STAT_OPEN ){
-						openZones[zone] = this._datestringMaker(movingDate);
+						openZones[zone] = (format ? this.datestringMaker(movingDate) : new Date(movingDate));
+						//openZones[zone] = this._datestringMaker(movingDate);
 						--openZoneCounter;
 				}
 			}
@@ -208,10 +242,10 @@ class MZTable {
 	
 	/**
 	 * Function that looks ahead for the next openings of a specific Metal Zones and their AHTKs.
-	 * Returns: JSON with 2 attributes (openZoneSchedule, openAHTKSchedule) that are arrays populated with Strings
+	 * Returns: JSON with 2 attributes (openZoneSchedule, openAHTKSchedule) that are arrays populated with Strings (or Dates if format = false)
 	 * 		NOTE: Strings made in this function use internal datestringMaker to manage readability moving up
 	 */
-	getSpecificZoneSchedule(zone){
+	getSpecificZoneSchedule(zone, format = true){
 		//Initialize new DateTime object set to start at the next hour
 		var movingDate = new Date();
 		movingDate.setHours( movingDate.getHours() + 1 );
@@ -232,19 +266,25 @@ class MZTable {
 			//Iterate all zones fetched
 			//NOTE: Ignore cases where openNow == 2 
 			//Skip case where openNow == 2 to ignore "current" MZ1 running
-			if( openNow == this._STAT_OPEN1 ){ continue; }
+			if( openNow == this._STAT_OPEN1 ){ ; }
 			//Case for AHTK, but skip if the counter is 0 or current zone has its time filled
 			else if( openAHTKCounter > 0 
 				&& typeof openAHTK === 'undefined' 
 				&& openNow == this._STAT_KING ){
-					openAHTK = this._datestringMaker(movingDate, true);
+					//console.log("AHTK moving date: " + movingDate);
+					//console.log("format ?: :" + (format ? this._datestringMaker(movingDate, true) : movingDate));
+					openAHTK = (format ? this.datestringMaker(movingDate, true) : new Date(movingDate));
+					//openAHTK = this._datestringMaker(movingDate, true);
 					--openAHTKCounter;
 			}
 			//Case for normal MZs, but skip if the counter is 0 or current zone has its time filled
 			else if ( openZoneCounter > 0 
 				&& typeof openZone === 'undefined' 
 				&& openNow == this._STAT_OPEN ){
-					openZone = this._datestringMaker(movingDate);
+					//console.log("Base moving date: " + movingDate);
+					//console.log("format ?: :" + (format ? this._datestringMaker(movingDate, true) : movingDate));
+					openZone = ((format) ? this.datestringMaker(movingDate) : new Date(movingDate));
+					//openZone = this._datestringMaker(movingDate);
 					--openZoneCounter;
 			}
 			//Increment the hour for MZ analysis
@@ -256,5 +296,5 @@ class MZTable {
 }
 
 //Export MZTable class for other parts to use
-module.exports = MZTable;
+module.exports = new MZTable();
 

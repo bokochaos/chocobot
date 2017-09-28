@@ -25,15 +25,15 @@ roleNames.set("terra battle 1", roleStrings[0]);
 roleNames.set("tb", roleStrings[0]);
 roleNames.set("tb1", roleStrings[0]);
 
-roleNames.set("terra battle 2",roleStrings[1]);
-roleNames.set("terra battle2",roleStrings[1]);
-roleNames.set("tb2",roleStrings[1]);
+roleNames.set("terra battle 2", roleStrings[1]);
+roleNames.set("terra battle2", roleStrings[1]);
+roleNames.set("tb2", roleStrings[1]);
 
-roleNames.set("terra wars",roleStrings[2]);
-roleNames.set("tw",roleStrings[2]);
+roleNames.set("terra wars", roleStrings[2]);
+roleNames.set("tw", roleStrings[2]);
 
-roleNames.set("veteran",roleStrings[3]);
-roleNames.set("vet",roleStrings[3]);
+roleNames.set("veteran", roleStrings[3]);
+roleNames.set("vet", roleStrings[3]);
 
 roleNames.set("tbf", roleStrings[4]);
 roleNames.set("forum", roleStrings[4]);
@@ -41,8 +41,6 @@ roleNames.set("forum", roleStrings[4]);
 
 const voidRoleStrings = ["administrator", "moderator", "companion", "rydia", "pvp", "content", "wiki", "metal", "bot", "dyno" ];
 
-const adminRolesStrings = ["administrator", "moderator", "companion"];
 
-
-module.exports = {openRoles: roleNames, voidRoles: voidRoleStrings, adminRoles: adminRolesStrings };
+module.exports = {openRoles: roleNames, voidRoles: voidRoleStrings };
 

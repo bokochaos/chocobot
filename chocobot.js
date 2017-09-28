@@ -1,9 +1,9 @@
 /*
- * Created:				26 June 2017
- * Last updated:		22 Aug 2017
+ * Created:				  26 June 2017
+ * Last updated:		27 Sept 2017
  * Developer(s):		CodedLotus
  * Description:			Core details and functions of Chocobot
- * Version #:			1.0.2
+ * Version #:			  1.0.2
  * Version Details:
 		0.0.0: Core code came from Nazuna Bot
 		0.0.1: variable string storing bot token changed to constant
@@ -21,8 +21,8 @@
 
 //console.log("Hello world!");
 
-//import the function getToken() as a part of botCodes to allow access to bot token
-const token = require('./constants/token').token;
+//import "external" botData to allow access to bot token and other data
+const botData = require('./constants/token').botData;
 //const token = require('./constants/token').token;
 const customErrors = require('./constants/errors');
 
@@ -30,12 +30,14 @@ const customErrors = require('./constants/errors');
 const SKILLS = require('./constants/skills_data').Skills;
 
 //r/TB Discord role names anmd alterations
-var roleNames = require('./constants/role_maps').roleNames;
+var roleNames = require('./constants/role_maps');
 //TODO: make this into a DB system that allows for better name association management
 
 /* Metal Zone Tracker */
-var MZTable = require("./constants/MZTable");
-var MZSchedule = new MZTable();
+const MZSchedule = require("./constants/MZTable");
+
+/* Daily Quest Tracker */
+const DQSchedule = require("./constants/DQTable");
 
 
 const Discord = require('discord.js');
@@ -76,11 +78,17 @@ function commandIs(str, msg){
 }
 
 //Return JSO that contains the command, and relevant details following
+//Return JSO that contains the command, and relevant details following
 function commandJSO(msg){
 	//check if message actually is a command. If not, return a "no_task" JSO.
-	//In the case of not having anything but a trigger, return an "annoyed" JSO
+  //In the case of not having anything but a trigger, return an "annoyed" JSO
 	var msgContent = msg.content, msgContentLower = msg.content.toLowerCase();
-	//console.log(msg.content);
+  
+  const msgPrefixes  = botData.commandPrefixes,
+        thankYou     = [ "thank you", "thanks"],
+        sorry        = [ "sorry", "im sorry", "i'm sorry"],
+        praiseYamcha = [ "praiseyamcha", "praise yamcha"],
+        hisoNames    = [ "hisobot", "hisoguchi"];
 	
 	/*Checking for cases
 	 * A: Command messages with no further details or tasks
@@ -89,31 +97,40 @@ function commandJSO(msg){
 	 * D: Commands that start with the bot's trigger character
 	 */
 	
-	//Manage case A with an object with task "annoyed" to trigger bot's annoyed message
+  
+  //Manage case A with an object with task "annoyed" to trigger bot's annoyed message
 	//TODO: Manage case A part b (bot_nickname resolution) for all cases
-	//console.log( (msgContent === "!") + " " + (msgContent === "Chocobot,") );
-	//console.log( (!msgContent.startsWith('!')) + " " + ( !msgContent.startsWith("Chocobot,") ) );
-	if( msgContentLower === "!" || msgContentLower === "chocobot," ) { return {task: "annoyed"}; }
-	//Manage case B with an object with no task to trigger bot's ignore response
+	if( msgPrefixes.some( x => x === msgContentLower) ) { return {task: "annoyed"}; }
+  //if( msgContentLower === "!" || msgContentLower === "hisobot," || msgContentLower === "hisoguchi," ) { return {task: "annoyed"}; }
+	//Manage case B with an object with no task to trigger bot's ignore response (or prevent a botception)
 	//TODO: Manage case B part b (bot_nickname resolution) for all cases
 	//Earlier existing bug: || over && prevented all commands from being read...
-	else if ( !msgContentLower.startsWith('!') && !msgContentLower.startsWith("chocobot,") ) { return new Object(); }
+  else if ( msg.author.bot || !(msgPrefixes.some(x => msgContentLower.startsWith(x))) ) { return new Object(); }
+  //else if ( message.author.bot || (!msgContentLower.startsWith('!') && !msgContentLower.startsWith("hisobot,") && !msgContentLower.startsWith("hisoguchi,") ) ) { return new Object(); }
 	
 	
 	//Manage case C or D with a JSObject to trigger and fulfil the requirements of said task
 	//Remove the command notification trigger, and clean unnecessary whiteSpace
 	//sets msgContent to be the substring without header "!"
-	else if ( msgContent.startsWith('!') ) { msgContent = msgContent.substr(1).trim(); }
+	else if ( msgContent.startsWith(msgPrefixes[0]) ) { msgContent = msgContent.slice(1).trim(); }
 	
-	//sets msgContent to be the substring without header "[bot nickname]"
+	//sets msgContent to be the substring without header "Hisobot"
+	else if ( msgContentLower.startsWith(msgPrefixes[1]) ) { msgContent = msgContent.slice(msgPrefixes[1].length).trim(); }
+	
+	//sets msgContent to be the substring without header "[bot nickname]" ATM managed as Hisoguchi
 	//TODO: Manage case D part b (bot_nickname resolution) for all cases
-	else { msgContent = msgContent.substr("Chocobot,".length).trim(); }
+	//else { msgContent = msgContent.slice(msgPrefixes[2].length).trim(); }
 	
 	delete msgContentLower;
 	
-	console.log("current command content: " + msgContent);
+	console.log("current command content: " + msgContent + " by: " + msg.author.username + " in: " + msg.channel );
+  //if(msg.guild !== null){console.log("Guild is: " + msg.guild);}
 	
-	//Get the index of the first space. -1 means that it is a no-detail command
+	//set pmFlag on command if (-)pm command flag has been set in command details
+	var pmFlag = (hasSubstr(msgContent, "-pm") || hasSubstr(msgContent, "pm"));
+	if (pmFlag) {msgContent = msgContent.replace(/-?pm/gi, "").trim();}
+  
+  //Get the index of the first space. -1 means that it is a no-detail command
 	//26 July 2017: Issue where -1 -> 0, causing a (0,0)-exclusive substring fails is resolved
 	var indexOfSpace = msgContent.indexOf(' ');
 	indexOfSpace = ( ( indexOfSpace == -1 ) ? msgContent.length : indexOfSpace );
@@ -123,7 +140,8 @@ function commandJSO(msg){
 	command.task = msgContent.substring(0, indexOfSpace).trim().toLowerCase();
 	command.details = msgContent.substring(indexOfSpace).trim();
 	command.message = msg; //Necessary to manage some content management
-	//console.log(command);
+	command.pmUser = pmFlag;
+	//console.log(command.pmUser + " : " + command.task);
 	return command;
 }
 
@@ -150,21 +168,28 @@ function onStart(){
 }*/
 
 //Shut down server (on emergency or for updates)
-function onShutDown(message){
-	const permissions = message.member.permissions;
-	if ( permissions.has("KICK_MEMBERS") ){
+const onShutDown = require("./events/onShutDown");
+
+/*function onShutDown(message){
+  const guild = client.guilds.find("name", "Terra Battle");
+  const guildMember = guild.members.get(message.author.id);
+  const guildMemberHighestRole = guildMember.highestRole.name.toLowerCase();
+  console.log(guildMemberHighestRole);
+	//const permissions = message.member.permissions;
+	if ( message.author.id == botData.owner 
+    || roleNames.adminRoles.some(x => guildMemberHighestRole.includes(x))) {
 	
 		//console.log("Kweh! (chocobot out!)");
 		message.channel.send("Kweh! (chocobot out!)");
 		
-		const author = message.author;
+		const author = message.author, channel = message.channel;
 		const server = message.guild;
-		/*client.destroy((err) => {
-			console.log(err);
-		});*/
+		
 		console.log(customErrors.getShutDownError().message);
 		console.log("user: " + author.username + " id: " + author.id);
-		console.log("server: " + server.name + " id: " + server.id);
+    console.log("channel id: " + channel.id);
+		( channel instanceof Discord.GuildChannel ?
+      console.log("server: " + server.name + " id: " + server.id) : "");
 		
 		delete author, server;
 		
@@ -174,7 +199,7 @@ function onShutDown(message){
 		process.exit();
 	}
 	else { message.channel.send("Kweh (lol nope)"); }
-}
+}*/
 
 //Feed the chocobot Gysahl Greens (for fun)
 function manageFeeding(details) {
@@ -190,52 +215,65 @@ function manageFeeding(details) {
 }
 
 //Add server roles to user based on command details
-function manageRoles(cmd){
-	if (typeof cmd.message.channel === 'DMChannel') { return {response: "failure"}; }
-	var roles = cmd.details.split(",");
-	var guildMember = cmd.message.member;
-	const guildRoles = cmd.message.guild.roles;
-	var feedback = {response: ""};
-	//console.log(guildMember);
-	
-	//Check to make sure the requested role isn't forbidden
-	//Find role in guild's role collection
-	//Assign role (or remove role if already in ownership of)
-	//Append response of what was done
-	roles.forEach(function(entry){
-		entry = entry.trim();
-		lowCaseEntry = entry.toLowerCase();
-		
-		//Ignore any attempts to try to get a moderator, admin, companion, bot, or Rydia role.
-		if (!hasSubstr(lowCaseEntry, "com") &&
-			!hasSubstr(lowCaseEntry, "mod") &&
-			!hasSubstr(lowCaseEntry, "adm") &&
-			!hasSubstr(lowCaseEntry, "ryd") &&
-			!hasSubstr(lowCaseEntry, "bot") &&
-			!hasSubstr(lowCaseEntry, "dyno") ){
-			
-			//run requested role name through the roleName DB
-			var roleCheck = roleNames.get(lowCaseEntry); //TODO: Make a DB that allows for server-specific role name checks
-			var role;
-			
-			try{ var role = guildRoles.find("name", roleCheck); }
-			catch (err) { 
-				//Role didn't exist
-				console.log(err.message);
-			}
-			
-			if( typeof role === 'undefined' || role == null ){ feedback.response = feedback.response.concat("Kweh kweh (role '" + entry + "' does not exist)\n"); }
-			else if( guildMember.roles.has(role.id) ) {
-				guildMember.removeRole(role);
-				feedback.response = feedback. response.concat("Kweh kweh (role removed: " + role.name + ")\n"); }
-			else {
-				guildMember.addRole(role);
-				feedback.response = feedback.response.concat("Kweh kweh (role assigned: " + role.name + ")\n"); }
-		} else { feedback.response = feedback.response.concat("Kweh kweh (I cannot assign '" + entry + "' roles)"); }
-		//guildMember = cmd.message.member;
-	});
-	//return feedback responses
-	return feedback;
+function manageRoles(command){
+  try{
+    const channel = command.message.channel, guild = client.guilds.find("name", "Terra Battle");
+
+    if( channel instanceof Discord.GuildChannel && channel.name !== "bot-use" ){
+      //console.log("Wrong channel reception");
+      sendMessage(command, "Sorry, " + command.message.author.username + " let's take this to #bot-use");
+      return;
+    }
+    const openRoles = roleNames.openRoles, voidRoles = roleNames.voidRoles;
+    const guildRoles = guild.roles; //command.message.guild.roles;
+    var roles = command.details.split(","),  guildMember = guild.members.get(command.message.author.id);
+    
+    var feedback = "";
+    
+    //Check to make sure the requested role isn't forbidden
+    //Find role in guild's role collection
+    //Assign role (or remove role if already in ownership of)
+    //Append response of what was done to "feedback"
+    roles.forEach(function(entry){
+      entry = entry.trim();
+      lowCaseEntry = entry.toLowerCase();
+      
+      //Ignore any attempts to try to get a moderator, admin, companion, bot, or specialty role.
+      //Ignore: metal minion, wiki editor, content creator, pvp extraordinare
+      /*voidRoles.forEach(
+        function(currentValue){
+          
+        }
+       );*/ //TODO: Manage Void Role rejection more elegantly
+      if (!(voidRoles.some( x => lowCaseEntry.includes(x) )) ){
+        
+        //run requested role name through the roleName DB
+        var roleCheck = openRoles.get(lowCaseEntry); //TODO: Make a DB that allows for server-specific role name checks
+        var role;
+        
+        try{ role = guildRoles.find("name", roleCheck); }
+        catch (err) { 
+          //Role didn't exist
+          console.log(err.message);
+          console.log("User: " + command.message.author.name);
+        }
+        
+        if( typeof role === 'undefined' || role == null ){ feedback += "So... role '" + entry + "' does not exist\n"; }
+        else if( guildMember.roles.has(role.id) ) {
+          guildMember.removeRole(role);
+          feedback += "I removed the role: " + role.name + "\n"; }
+        else {
+          guildMember.addRole(role);
+          feedback += "I assigned the role: " + role.name + "\n"; }
+      } else { feedback += "FYI, I cannot assign '" + entry + "' roles"; }
+      //guildMember = command.message.member;
+    });
+    //return feedback responses
+    ( feedback.length > 0 ? command.message.channel.send(feedback) : "" );
+  } catch (err) {
+    console.log(err.message);
+    console.log("User: " + command.message.author.username);
+  }
 }
 
 
@@ -307,7 +345,7 @@ function metalZone(cmd){
 			case '3': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(3); break;
 			case '4': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(4); break;
 			case '5': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(5); break;
-			case '6':  futureMZSchedule = MZSchedule.getSpecificZoneSchedule(6); break;
+			case '6': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(6); break;
 			case '7': futureMZSchedule = MZSchedule.getSpecificZoneSchedule(7); break;
 			default:
 				cmd.message.channel.send( "Kweh kweh? (I don't know that zone. You doing okay?)" );
@@ -344,7 +382,7 @@ client.on('message', message => {
 	
 	switch(command.task){
 		case "shutdown":
-			onShutDown(message);
+			onShutDown(client, command);
 			
 			//20 July 2017: Not sure if this message is reached.
 			//01 Aug 2017: Message is reached if the user does not have authorization. Thanks @Paddington for being the first person to test that.
@@ -530,4 +568,4 @@ client.on('message', message => {
 //     });
 
 
-client.login( token );
+client.login( botData.token );

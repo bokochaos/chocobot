@@ -1,5 +1,5 @@
 /*
- * Created:				28 June 2017
+ * Created:				  28 June 2017
  * Last updated:		28 June 2017
  * Developer(s):		CodedLotus
  * Description:			Returns errors used to help figure what kind of issues are arising in the bot

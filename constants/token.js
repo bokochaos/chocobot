@@ -13,7 +13,8 @@
 
 exports.token = '***INSERT DISCORD BOT TOKEN HERE***';
 
-exports.options = {
+exports.botData = {
 	owner: '**INSERT USER ID HERE***',
-	commandPrefix: '!'
+  token: '***INSERT DISCORD BOT TOKEN HERE***',
+	commandPrefixes: [ "&", "chocobot,"]
 };
